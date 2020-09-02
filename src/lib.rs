@@ -80,6 +80,12 @@ pub trait FromBytes: Sized {
 // Implementations
 /////////////////////////////////////////////////////////////////////////
 
+impl<'a> From<&'a [u8]> for Bytes<'a> {
+    fn from(bytes: &'a [u8]) -> Self {
+        Self::from_slice(bytes)
+    }
+}
+
 impl<'a> Bytes<'a> {
     /// Returns a new cursor over a slice of bytes.
     pub const fn from_slice(bytes: &'a [u8]) -> Self {
