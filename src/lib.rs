@@ -1,9 +1,12 @@
 //! Defines a cursor over a slice of bytes.
 
-use std::mem;
-use std::result;
+#![no_std]
 
-use thiserror::Error;
+#[cfg(feature = "std")]
+extern crate std;
+
+use core::mem;
+use core::result;
 
 /////////////////////////////////////////////////////////////////////////
 // Definitions
@@ -13,8 +16,12 @@ use thiserror::Error;
 pub type Result<T> = result::Result<T, Error>;
 
 /// A generic error that can occur while reading bytes.
-#[derive(Debug, Error, PartialEq)]
-#[error("wanted {size} bytes but {} bytes remain", self.len - self.pos)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(
+    feature = "std",
+    derive(thiserror::Error),
+    error("wanted {size} bytes but {} bytes remain", self.len - self.pos),
+)]
 pub struct Error {
     size: usize,
     len: usize,
@@ -271,6 +278,17 @@ mod tests {
         assert_eq!(
             bytes.read::<[NewType; 3]>().unwrap(),
             [NewType(0x0201), NewType(0x0403), NewType(0x0605)]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn error_display() {
+        let mut bytes = Bytes::from_slice(&[]);
+        let err = bytes.read::<u8>().unwrap_err();
+        assert_eq!(
+            std::string::ToString::to_string(&err),
+            "wanted 1 bytes but 0 bytes remain"
         );
     }
 }

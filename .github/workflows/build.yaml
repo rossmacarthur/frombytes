@@ -28,6 +28,9 @@ jobs:
     - name: Test
       run: cargo test
 
+    - name: Verify `no_std` compatibility
+      run: cargo test --manifest-path tests/no_std/Cargo.toml
+
   publish:
     if: startsWith(github.event.ref, 'refs/tags')
     needs: test
