@@ -13,7 +13,7 @@ use core::result;
 /////////////////////////////////////////////////////////////////////////
 
 /// A result type to use in this crate.
-pub type Result<T> = result::Result<T, Error>;
+pub type Result<T> = result::Result<T, UnexpectedEof>;
 
 /// A generic error that can occur while reading bytes.
 #[derive(Debug, PartialEq)]
@@ -22,7 +22,7 @@ pub type Result<T> = result::Result<T, Error>;
     derive(thiserror::Error),
     error("wanted {size} bytes but {} bytes remain", self.len - self.pos),
 )]
-pub struct Error {
+pub struct UnexpectedEof {
     size: usize,
     len: usize,
     pos: usize,
@@ -40,7 +40,7 @@ pub struct Bytes<'a> {
 /// # Examples
 ///
 /// ```
-/// use frombytes::{Bytes, Error, FromBytes};
+/// use frombytes::{Bytes, Result, FromBytes};
 ///
 /// struct MyStruct {
 ///     a: u32,
@@ -48,32 +48,22 @@ pub struct Bytes<'a> {
 /// }
 ///
 /// impl FromBytes for MyStruct {
-///     // we simply use the same error that primitives use
-///     // but any error could be used
-///     type Error = Error;
-///
-///     fn from_bytes(bytes: &mut Bytes) -> Result<Self, Self::Error> {
+///     fn from_bytes(bytes: &mut Bytes) -> Result<Self> {
 ///         // uses type inference to know to read a `u32`
 ///         let a = bytes.read()?;
 ///         // uses type inference to know to read a `i16`
 ///         let b = bytes.read()?;
-///         Ok(Self { a, b })
+///         Self { a, b }
 ///     }
 /// }
 /// ```
 pub trait FromBytes: Sized {
-    /// The associated error which can be returned from parsing.
-    ///
-    /// All primitive types as well as radiotap fields implementing this trait
-    /// set this error to [`Error`](struct.Error.html).
-    type Error;
-
     /// Construct a type from bytes.
     ///
     /// This method is often used implicitly through
     /// [`Bytes`](struct.Bytes.html)'s [`read`](struct.Bytes.html#method.read)
     /// method.
-    fn from_bytes(bytes: &mut Bytes) -> result::Result<Self, Self::Error>;
+    fn from_bytes(bytes: &mut Bytes) -> Result<Self>;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -114,7 +104,7 @@ impl<'a> Bytes<'a> {
         let pos = self.pos;
         let len = self.len();
         if new_pos > self.len() {
-            Err(Error {
+            Err(UnexpectedEof {
                 size: new_pos - pos,
                 len,
                 pos,
@@ -162,47 +152,35 @@ impl<'a> Bytes<'a> {
     /// let value: u32 = bytes.read().unwrap();
     /// assert_eq!(value, 0x12345678);
     /// ```
-    pub fn read<T: FromBytes>(&mut self) -> result::Result<T, <T as FromBytes>::Error> {
+    pub fn read<T: FromBytes>(&mut self) -> Result<T> {
         T::from_bytes(self)
     }
 }
 
-macro_rules! impl_primitive {
-    ($Type:ty) => {
-        impl FromBytes for $Type {
-            type Error = Error;
-
-            fn from_bytes(bytes: &mut Bytes) -> Result<Self> {
-                const COUNT: usize = mem::size_of::<$Type>();
-                let mut buf = [0; COUNT];
-                buf.copy_from_slice(bytes.read_slice(COUNT)?);
-                Ok(Self::from_le_bytes(buf))
+macro_rules! impl_ints {
+    ($($Type:ty)+) => {
+        $(
+            impl FromBytes for $Type {
+                fn from_bytes(bytes: &mut Bytes) -> Result<Self> {
+                    const COUNT: usize = mem::size_of::<$Type>();
+                    let mut buf = [0; COUNT];
+                    buf.copy_from_slice(bytes.read_slice(COUNT)?);
+                    Ok(Self::from_le_bytes(buf))
+                }
             }
-        }
+        )+
     };
 }
 
-impl_primitive!(u8);
-impl_primitive!(u16);
-impl_primitive!(u32);
-impl_primitive!(u64);
-impl_primitive!(u128);
-
-impl_primitive!(i8);
-impl_primitive!(i16);
-impl_primitive!(i32);
-impl_primitive!(i64);
-impl_primitive!(i128);
+impl_ints!(u8 u16 u32 u64 u128 i8 i16 i32 i64 i128);
 
 macro_rules! impl_array {
     ($SIZE:expr) => {
-        impl<T, E> FromBytes for [T; $SIZE]
+        impl<T> FromBytes for [T; $SIZE]
         where
-            T: FromBytes<Error = E> + Default,
+            T: FromBytes + Default,
         {
-            type Error = E;
-
-            fn from_bytes(bytes: &mut Bytes) -> result::Result<Self, E> {
+            fn from_bytes(bytes: &mut Bytes) -> Result<Self> {
                 let mut buf = Self::default();
                 for i in 0..$SIZE {
                     buf[i] = bytes.read()?;
@@ -217,6 +195,10 @@ impl_array!(1);
 impl_array!(2);
 impl_array!(3);
 impl_array!(4);
+impl_array!(5);
+impl_array!(6);
+impl_array!(7);
+impl_array!(8);
 
 /////////////////////////////////////////////////////////////////////////
 // Unit tests
